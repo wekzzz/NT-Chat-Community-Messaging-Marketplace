@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Auth } from './components/Auth';
 import { Registration, UserProfileData } from './components/Registration';
@@ -12,18 +12,22 @@ import { BottomNav, Tab } from './components/BottomNav';
 import { LanguageProvider } from './components/LanguageContext';
 import { ThemeProvider } from './components/ThemeContext';
 import { PlanProvider, usePlan } from './components/PlanContext';
-import { PlanUpgrade } from './components/PlanUpgrade';
+import { UserProfileScreen } from './components/UserProfileScreen';
+import { useChatSocket } from './hooks/useChatSocket';
 import {
   COMMUNITIES, INITIAL_MESSAGES, INITIAL_DM_MESSAGES, DM_CONVERSATIONS,
   Message, DMMessage, Community, DMConversation
 } from './components/mockDatabase';
 
-interface AppState { isAuthenticated: boolean; phone: string; }
-type Screen = | { type: 'tabs' } | { type: 'community-hub'; communityId: number } | { type: 'dm-chat'; conversationId: string };
+type Screen = 
+  | { type: 'tabs' } 
+  | { type: 'community-hub'; communityId: number } 
+  | { type: 'dm-chat'; conversationId: string }
+  | { type: 'user-profile'; targetUserId: string; targetUserName: string };
 
 function AppContent() {
   const { plan, setPlan } = usePlan();
-  const [authState, setAuthState] = useState<AppState>(() => {
+  const [authState, setAuthState] = useState(() => {
     const saved = localStorage.getItem('nt_chat_user');
     return saved ? { isAuthenticated: true, phone: JSON.parse(saved).phone || '' } : { isAuthenticated: false, phone: '' };
   });
@@ -35,87 +39,106 @@ function AppContent() {
 
   const [activeTab, setActiveTab] = useState<Tab>('events');
   const [screen, setScreen] = useState<Screen>({ type: 'tabs' });
-  const [showPlanUpgrade, setShowPlanUpgrade] = useState(false);
   
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
   const [dmMessages, setDmMessages] = useState<DMMessage[]>(INITIAL_DM_MESSAGES);
   const [dmConversations, setDmConversations] = useState<DMConversation[]>(DM_CONVERSATIONS);
 
-  // WEBSOCKETS LOGIC
-  const [ws, setWs] = useState<WebSocket | null>(null);
+  const myUserId = userProfile?.id || 'me';
+  const currentConversationId = screen.type === 'dm-chat' ? screen.conversationId : undefined;
 
-  useEffect(() => {
-    const host = window.location.hostname;
-    const socket = new WebSocket(`ws://${host}:8080`);
+  // Чистое подключение сокетов
+  const { sendCommunityMessage, sendDmMessage } = useChatSocket(
+    myUserId, 
+    currentConversationId, 
+    setMessages, 
+    setDmMessages, 
+    setDmConversations
+  );
 
-    socket.onopen = () => console.log('Подключено к Fastify WebSocket');
+  const handleSendCommunityMessage = (msg: Message) => {
+    setMessages(prev => [...prev, msg]);
+    sendCommunityMessage(msg);
+  };
 
-    socket.onmessage = (event) => {
-      try {
-        const response = JSON.parse(event.data);
-        
-        if (response.type === 'init') {
-          if (response.data.community.length > 0) {
-            setMessages(prev => {
-              const newMsgs = response.data.community.filter((newMsg: Message) => !prev.some(m => m.id === newMsg.id));
-              return [...prev, ...newMsgs];
-            });
-          }
-        } 
-        else if (response.type === 'broadcast_community') {
-          setMessages(prev => prev.some(m => m.id === response.data.id) ? prev : [...prev, response.data]);
-        } 
-      } catch (e) {
-        console.error('WebSocket Error:', e);
+  const handleSendDMMessage = (msg: DMMessage) => {
+    setDmMessages(prev => [...prev, msg]);
+    setDmConversations(prev => prev.map(c => c.id === msg.conversationId ? { ...c, lastMessage: msg.text, lastMessageTime: 'Только что', unreadCount: 0 } : c));
+    sendDmMessage(msg);
+  };
+
+  // Строгое создание личного чата по ID
+  const handleStartDM = (targetUserId: string, targetUserName: string) => {
+    const participants = [myUserId, targetUserId].sort();
+    const convId = `dm_${participants[0]}_${participants[1]}`;
+
+    setDmConversations(prev => {
+      if (!prev.find(c => c.id === convId)) {
+        return [{ id: convId, participantName: targetUserName, participantEmoji: '👤', lastMessage: 'Начать чат', lastMessageTime: 'Только что', unreadCount: 0, isOnline: true }, ...prev];
       }
-    };
+      return prev;
+    });
 
-    setWs(socket);
-    return () => socket.close();
-  }, []);
-
-  const handleAuthenticated = () => setAuthState({ isAuthenticated: true, phone: '' });
-  const handleRegistrationComplete = (profile: UserProfileData) => setUserProfile(profile);
-
-  const handleLogout = () => {
-    localStorage.clear();
-    setAuthState({ isAuthenticated: false, phone: '' });
-    setUserProfile(null);
-    setScreen({ type: 'tabs' });
+    setActiveTab('chats');
+    setScreen({ type: 'dm-chat', conversationId: convId });
   };
 
-  const handleSendCommunityMessage = (message: Message) => {
-    setMessages(prev => [...prev, message]);
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'new_community_message', data: message }));
-    }
-  };
-
-  const handleCommunityClick = (community: Community) => setScreen({ type: 'community-hub', communityId: community.id });
-  const handleBackToTabs = () => setScreen({ type: 'tabs' });
-
-  if (!authState.isAuthenticated) return <Auth onAuthenticated={handleAuthenticated} />;
-  if (authState.isAuthenticated && !userProfile) return <Registration onComplete={handleRegistrationComplete} />;
+  if (!authState.isAuthenticated) return <Auth onAuthenticated={() => setAuthState({ isAuthenticated: true, phone: '' })} />;
+  if (authState.isAuthenticated && !userProfile) return <Registration onComplete={setUserProfile} />;
 
   const currentCommunity = screen.type === 'community-hub' ? COMMUNITIES.find(c => c.id === screen.communityId) : undefined;
-  const currentCommunityMessages = screen.type === 'community-hub' ? messages.filter(m => m.communityId === screen.communityId) : [];
+  const currentDMConversation = screen.type === 'dm-chat' ? dmConversations.find(c => c.id === screen.conversationId) : undefined;
 
   return (
     <div className="min-h-screen w-full font-sans overflow-hidden bg-black">
       <div className="max-w-md mx-auto h-screen flex flex-col relative shadow-2xl overflow-hidden bg-white">
         <main className="flex-1 overflow-y-auto no-scrollbar relative">
           <AnimatePresence mode="wait">
-            {screen.type === 'community-hub' && currentCommunity ? (
+            
+            {screen.type === 'community-hub' && currentCommunity && (
               <motion.div key="hub" className="h-full">
-                <CommunityHub community={currentCommunity} messages={currentCommunityMessages} onBack={handleBackToTabs} onSendMessage={handleSendCommunityMessage} onContactSeller={() => {}} />
-              </motion.div>
-            ) : (
-              <motion.div key={activeTab} className="h-full">
-                {activeTab === 'events' && <EventsFeed profile={userProfile} onUpgradePlan={() => setShowPlanUpgrade(true)} />}
-                {activeTab === 'communities' && <CommunitiesDirectory communities={COMMUNITIES} onCommunityClick={handleCommunityClick} />}
-                {activeTab === 'profile' && userProfile && <Profile profile={userProfile} onLogout={handleLogout} onUpgradePlan={() => setShowPlanUpgrade(true)} />}
+                <CommunityHub 
+                  community={currentCommunity} 
+                  messages={messages.filter(m => m.communityId === screen.communityId)} 
+                  onBack={() => setScreen({ type: 'tabs' })} 
+                  onSendMessage={handleSendCommunityMessage} 
+                  onContactSeller={(name) => handleStartDM(`user_${name}`, name)} // Fallback for old mock data
+                  onUserClick={(id, name) => setScreen({ type: 'user-profile', targetUserId: id, targetUserName: name })}
+                />
               </motion.div>
             )}
+
+            {screen.type === 'user-profile' && (
+              <motion.div key="profile" className="h-full">
+                <UserProfileScreen 
+                  userId={screen.targetUserId} 
+                  userName={screen.targetUserName} 
+                  onBack={() => setScreen({ type: 'tabs' })} 
+                  onWriteMessage={handleStartDM} 
+                />
+              </motion.div>
+            )}
+
+            {screen.type === 'dm-chat' && currentDMConversation && (
+              <motion.div key="dm" className="h-full">
+                <DMChat 
+                  conversation={currentDMConversation} 
+                  messages={dmMessages.filter(m => m.conversationId === screen.conversationId).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())} 
+                  onBack={() => setScreen({ type: 'tabs' })} 
+                  onSendMessage={handleSendDMMessage} 
+                />
+              </motion.div>
+            )}
+
+            {screen.type === 'tabs' && (
+              <motion.div key={activeTab} className="h-full">
+                {activeTab === 'events' && <EventsFeed profile={userProfile} onUpgradePlan={() => {}} />}
+                {activeTab === 'chats' && <DMList conversations={dmConversations} onChatClick={(id) => setScreen({ type: 'dm-chat', conversationId: id })} />}
+                {activeTab === 'communities' && <CommunitiesDirectory communities={COMMUNITIES} onCommunityClick={(c) => setScreen({ type: 'community-hub', communityId: c.id })} />}
+                {activeTab === 'profile' && <Profile profile={userProfile} onLogout={() => { localStorage.clear(); window.location.reload(); }} onUpgradePlan={() => {}} />}
+              </motion.div>
+            )}
+            
           </AnimatePresence>
         </main>
         {screen.type === 'tabs' && <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />}
