@@ -945,6 +945,17 @@ const DM_AUTO_REPLIES: Record<string, string[]> = {
   dm6: ['Передам остальным', 'Хорошо', 'Поняла', 'Спасибо за инфу']
 };
 
+const SELLER_AUTO_REPLIES: string[] = [
+'Здравствуйте! Да, ещё в наличии',
+'Могу скинуть фото, напишите номер',
+'Цена окончательная, торг небольшой',
+'Можем встретиться сегодня после 17:00',
+'Доставка по городу 500₸',
+'Спасибо за интерес! Пишите, если будут вопросы',
+'Да, можно посмотреть вживую',
+'Самовывоз или доставка — как удобнее?'];
+
+
 export function getCommunityById(id: number): Community | undefined {
   return COMMUNITIES.find((c) => c.id === id);
 }
@@ -966,8 +977,14 @@ export function getRandomAutoReply(communityId: number): string {
 }
 
 export function getDMAutoReply(conversationId: string): string {
-  const replies = DM_AUTO_REPLIES[conversationId] || ['Ок', 'Понял', 'Хорошо'];
-  return replies[Math.floor(Math.random() * replies.length)];
+  const replies = DM_AUTO_REPLIES[conversationId];
+  if (replies) {
+    return replies[Math.floor(Math.random() * replies.length)];
+  }
+  // For new seller conversations (from marketplace contact)
+  return SELLER_AUTO_REPLIES[
+  Math.floor(Math.random() * SELLER_AUTO_REPLIES.length)];
+
 }
 
 export function generateMessageId(): string {

@@ -6,7 +6,7 @@ import {
   BriefcaseIcon,
   UsersIcon } from
 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Community, Message } from './mockDatabase';
 import { useTheme } from './ThemeContext';
 import { useLanguage } from './LanguageContext';
@@ -103,7 +103,7 @@ export function CommunityHub({
           </div>
         </div>
 
-        {/* Topic Tabs */}
+        {/* Topic Tabs — simple with animated indicator */}
         <div className="flex px-4 gap-6 overflow-x-auto no-scrollbar">
           {topics.map((topic) => {
             const isActive = activeTopic === topic.id;
@@ -125,6 +125,11 @@ export function CommunityHub({
                   className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full"
                   style={{
                     backgroundColor: theme.accent
+                  }}
+                  transition={{
+                    type: 'spring',
+                    stiffness: 500,
+                    damping: 35
                   }} />
 
                 }
@@ -134,71 +139,49 @@ export function CommunityHub({
         </div>
       </header>
 
-      {/* Content Area */}
+      {/* Content — instant switch, no animation */}
       <div className="flex-1 overflow-hidden relative">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTopic}
-            initial={{
-              opacity: 0,
-              x: 20
-            }}
-            animate={{
-              opacity: 1,
-              x: 0
-            }}
-            exit={{
-              opacity: 0,
-              x: -20
-            }}
-            transition={{
-              duration: 0.2
-            }}
-            className="h-full">
+        {activeTopic === 'chat' &&
+        <ChatRoom
+          community={community}
+          messages={messages}
+          onSendMessage={onSendMessage} />
 
-            {activeTopic === 'chat' &&
-            <ChatRoom
-              community={community}
-              messages={messages}
-              onSendMessage={onSendMessage} />
+        }
+        {activeTopic === 'market' &&
+        <Marketplace
+          communityId={community.id}
+          onContactSeller={onContactSeller} />
 
-            }
-            {activeTopic === 'market' &&
-            <Marketplace
-              communityId={community.id}
-              onContactSeller={onContactSeller} />
+        }
+        {activeTopic === 'services' &&
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+            <BriefcaseIcon
+            size={48}
+            style={{
+              color: theme.textMuted,
+              marginBottom: '16px',
+              opacity: 0.5
+            }} />
 
-            }
-            {activeTopic === 'services' &&
-            <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-                <BriefcaseIcon
-                size={48}
-                style={{
-                  color: theme.textMuted,
-                  marginBottom: '16px',
-                  opacity: 0.5
-                }} />
+            <h3
+            className="text-lg font-bold mb-2"
+            style={{
+              color: theme.textPrimary
+            }}>
 
-                <h3
-                className="text-lg font-bold mb-2"
-                style={{
-                  color: theme.textPrimary
-                }}>
+              Услуги в разработке
+            </h3>
+            <p
+            className="text-sm"
+            style={{
+              color: theme.textMuted
+            }}>
 
-                  Услуги в разработке
-                </h3>
-                <p
-                className="text-sm"
-                style={{
-                  color: theme.textMuted
-                }}>
-
-                  Скоро здесь появятся услуги от участников сообщества.
-                </p>
-              </div>
-            }
-          </motion.div>
-        </AnimatePresence>
+              Скоро здесь появятся услуги от участников сообщества.
+            </p>
+          </div>
+        }
       </div>
     </div>);
 

@@ -80,7 +80,8 @@ interface ThemeContextType {
   setTheme: (name: ThemeName) => void;
 }
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
-export function ThemeProvider({ children }: {children: ReactNode;}) {
+// NOTE: Uses React.ReactNode (not named import) so this never breaks
+export function ThemeProvider({ children }: {children: React.ReactNode;}) {
   const [themeName, setThemeName] = useState<ThemeName>('classic');
   const theme = THEMES[themeName];
   return (

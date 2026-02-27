@@ -35,7 +35,8 @@ interface PlanContextType {
   canAddPost: (currentCount: number) => boolean;
 }
 const PlanContext = createContext<PlanContextType | undefined>(undefined);
-export function PlanProvider({ children }: {children: ReactNode;}) {
+// NOTE: Uses React.ReactNode (not named import) so this never breaks
+export function PlanProvider({ children }: {children: React.ReactNode;}) {
   const [plan, setPlanState] = useState<PlanType>(() => {
     const saved = localStorage.getItem('nt_chat_plan');
     return saved as PlanType || 'free';

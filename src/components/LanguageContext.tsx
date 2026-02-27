@@ -392,7 +392,8 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(
   undefined
 );
-export function LanguageProvider({ children }: {children: ReactNode;}) {
+// NOTE: Uses React.ReactNode (not named import) so this never breaks
+export function LanguageProvider({ children }: {children: React.ReactNode;}) {
   const [language, setLanguageState] = useState<Language>(() => {
     return localStorage.getItem('nt_chat_lang') as Language || 'ru';
   });
